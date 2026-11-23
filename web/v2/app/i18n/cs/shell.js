@@ -1,0 +1,16 @@
+export default {
+  "ant.ok": "OK", "ant.cancel": "Zrušit", "ant.empty": "Žádná data",
+  "lang.switch": "Jazyk: čeština (klikněte pro angličtinu)",
+  "shell.expand": "Rozbalit panel", "shell.collapse": "Sbalit panel",
+  "shell.refresh": "Obnovit", "shell.legend": "Legenda", "shell.tips": "Tipy",
+  "shell.select": "Vyberte položku vlevo. Až bude něco čekat na vás, ukáže se tu celý tiket.",
+  "shell.server_down": "Server neodpovídá: {error}",
+  "shell.jira_off": "Jira: {reason} – položky z tiketů se nezobrazují.",
+  "nav.inbox": "Inbox", "nav.sessions": "Sessions", "nav.board": "Board", "nav.cleanup": "Úklid", "nav.ideas": "Nápady",
+  "nav.shortcut": "Zkratka: {k}",
+  "nav.cleanup.tip": "Úklid sessions v aplikaci Claude",
+  "nav.ideas.tip": "Odložené nápady ze starých sessions",
+  "filter.title": "Filtry (všechny záložky)", "filter.sprint": "tikety sprintu", "filter.assignee": "Řešitel", "filter.window": "Okno",
+  "filter.all": "Všichni", "filter.me": "Moje", "filter.none": "Nepřiřazené",
+  "filter.days": { one: "{n} den", few: "{n} dny", other: "{n} dní" },
+};

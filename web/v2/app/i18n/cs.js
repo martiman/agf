@@ -1,0 +1,10 @@
+import shell from "./cs/shell.js";
+import ticket from "./cs/ticket.js";
+import refine from "./cs/refine.js";
+import board from "./cs/board.js";
+import views from "./cs/views.js";
+import help from "./cs/help.js";
+import domain from "./cs/domain.js";
+import srvspec from "./cs/srvspec.js";
+import srv from "./cs/srv.js";
+export default { ...shell, ...ticket, ...refine, ...board, ...views, ...help, ...domain, ...srvspec, ...srv };

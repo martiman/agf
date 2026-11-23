@@ -1,0 +1,213 @@
+#!/bin/bash
+# flow – manual control of the local Claude sessions dashboard (code: agenticflow/, data: ~/.flow)
+#
+#   flow start        start the server detached (safe to run twice)
+#   flow stop         stop it (only if the process on the port is ours)
+#   flow restart      stop + start
+#   flow status       server, hooks, sessions, Jira, notifications at a glance
+#   flow open         start if needed, open the page in the default browser
+#   flow logs         follow the server log
+#   flow notify on|off|test   macOS notification when a session waits for you
+#   flow launch on|off|status|method app|terminal|log   open sessions from the board (off by default)
+#   flow approve on|off|status|log   approve AC in the page = Jira transition to REFINED (on by default)
+#   flow workmode on|off|status|plan|log   keep Jira WorkMode / NextAction in step with the sessions (off by default)
+#   flow help
+set -u
+# code lives in the repo folder (resolved through the ~/.local/bin symlink), runtime data and secrets stay in ~/.flow
+SELF="$0"; while [ -L "$SELF" ]; do T="$(readlink "$SELF")"; case "$T" in /*) SELF="$T" ;; *) SELF="$(dirname "$SELF")/$T" ;; esac; done
+CODE="$(cd "$(dirname "$SELF")/.." && pwd)"
+DIR="${FLOW_HOME:-$HOME/.flow}"
+mkdir -p "$DIR"; export FLOW_HOME="$DIR"
+PORT="${FLOW_PORT:-8765}"
+URL="http://127.0.0.1:$PORT"
+LOG="$DIR/dashboard.log"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+PY="$(command -v python3)"
+
+pid_on_port() { lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1; }
+is_ours()     { ps -p "$1" -o command= 2>/dev/null | grep -q "dashboard.py"; }
+
+start() {
+  local p; p="$(pid_on_port)"
+  if [ -n "$p" ]; then
+    if is_ours "$p"; then echo "Už běží (pid $p) → $URL"; return 0; fi
+    echo "Port $PORT drží jiný proces (pid $p), nespouštím:"; ps -p "$p" -o command=; return 1
+  fi
+  if [ ! -s "$DIR/secret" ]; then ( umask 077; "$PY" -c 'import secrets;print(secrets.token_urlsafe(32))' > "$DIR/secret" ); fi
+  if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1000000 ]; then : > "$LOG"; fi
+  # own session (setsid) so it survives the terminal / app session that started it
+  # the outer redirect matters: without it the lingering subshell keeps the caller's pipe open and `flow restart | tail` never ends
+  ( cd "$CODE/src" && perl -MPOSIX -e 'setsid(); exec @ARGV' "$PY" dashboard.py --port "$PORT" >> "$LOG" 2>&1 < /dev/null & ) > /dev/null 2>&1
+  local i
+  for i in $(seq 1 40); do
+    sleep 0.2
+    if curl -s -o /dev/null "$URL/api/state"; then echo "Spuštěno (pid $(pid_on_port)) → $URL"; return 0; fi
+  done
+  echo "Server nenaběhl. Poslední řádky logu ($LOG):"; tail -n 15 "$LOG"; return 1
+}
+
+stop() {
+  local p; p="$(pid_on_port)"
+  if [ -z "$p" ]; then echo "Neběží."; return 0; fi
+  if ! is_ours "$p"; then echo "Na portu $PORT je cizí proces (pid $p), nezastavuji."; return 1; fi
+  kill "$p"
+  local i
+  for i in $(seq 1 25); do sleep 0.2; [ -z "$(pid_on_port)" ] && { echo "Zastaveno."; return 0; }; done
+  kill -9 "$p" 2>/dev/null; sleep 0.3
+  [ -z "$(pid_on_port)" ] && echo "Zastaveno (kill -9)." || { echo "Nepodařilo se zastavit pid $p."; return 1; }
+}
+
+status() {
+  local p; p="$(pid_on_port)"
+  if [ -n "$p" ] && is_ours "$p"; then
+    echo "server        běží (pid $p, $(ps -p "$p" -o etime= | tr -d ' ')) → $URL"
+  elif [ -n "$p" ]; then
+    echo "server        port $PORT drží jiný proces (pid $p)"
+  else
+    echo "server        NEBĚŽÍ – spusť: flow start"
+  fi
+  if [ -e "$DIR/notify.off" ]; then echo "upozornění    vypnutá (flow notify on)"; else echo "upozornění    zapnutá"; fi
+  if grep -q "agenticflow/src/hook.py" "$HOME/.claude/settings.json" 2>/dev/null; then
+    echo "hooks         nastavené v ~/.claude/settings.json"
+  else
+    echo "hooks         NEJSOU v ~/.claude/settings.json – přehled se nebude plnit"
+  fi
+  "$PY" -I - "$URL" "$DIR" <<'EOF'
+import json, os, sys, urllib.request
+from datetime import datetime, timezone
+url, d = sys.argv[1], sys.argv[2]
+# last hook event
+ev = os.path.join(d, "events.jsonl")
+try:
+    last = open(ev).read().strip().splitlines()[-1]
+    ts = datetime.strptime(json.loads(last)["ts"], "%Y-%m-%dT%H:%M:%S%z")
+    m = (datetime.now(timezone.utc) - ts).total_seconds() / 60
+    print(f"poslední hook {m:.0f} min zpět" if m < 120 else f"poslední hook {m/60:.1f} h zpět")
+except Exception:
+    print("poslední hook žádný zápis v events.jsonl")
+# sessions + Jira from the running server
+try:
+    data = json.load(urllib.request.urlopen(url + "/api/state", timeout=3))
+except Exception:
+    print("sessions      (server neodpovídá)")
+    sys.exit()
+cnt = {}
+for s in data["sessions"]:
+    cnt[s["state"]] = cnt.get(s["state"], 0) + 1
+names = {"waiting": "čeká na vás", "suspect": "podezřelé", "running": "běží",
+         "idle": "čeká na pokyn", "closed": "neaktivní"}
+line = ", ".join(f"{cnt[k]} {names[k]}" for k in names if cnt.get(k)) or "žádné"
+print("sessions      " + line)
+j = data.get("jira", {})
+if not j.get("enabled"):
+    print("Jira          nenastaveno – " + (j.get("reason") or "?"))
+elif j.get("reason"):
+    print("Jira          chyba – " + j["reason"])
+else:
+    print(f"Jira          ok ({len(j.get('tickets', {}))} tiketů)")
+EOF
+}
+
+case "${1:-help}" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) stop && start ;;
+  status)  status ;;
+  open)    start && open "$URL" ;;
+  logs)    touch "$LOG"; tail -n 30 -f "$LOG" ;;
+  notify)
+    case "${2:-}" in
+      on)   rm -f "$DIR/notify.off"; echo "Upozornění zapnutá." ;;
+      off)  touch "$DIR/notify.off"; echo "Upozornění vypnutá." ;;
+      test) osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title (item 2 of argv)' -e 'end run' "Zkušební upozornění" "Claude čeká na vás" && echo "Odesláno – zobrazilo se?" ;;
+      *)    echo "použití: flow notify on|off|test"; exit 2 ;;
+    esac ;;
+  launch)
+    case "${2:-status}" in
+      on|off|status|method|log)
+        if [ "$2" = "log" ]; then touch "$DIR/launch.log"; tail -n 20 "$DIR/launch.log"; exit 0; fi
+        "$PY" -I - "$DIR/config.json" "${2:-status}" "${3:-}" <<'EOF'
+import json, os, sys
+p, cmd, arg = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(p) as f:
+        d = json.load(f)
+except (OSError, ValueError):
+    d = {}
+l = d.setdefault("launch", {})
+if cmd in ("on", "off"):
+    l["enabled"] = cmd == "on"
+elif cmd == "method":
+    if arg not in ("app", "terminal"):
+        sys.exit("použití: flow launch method app|terminal")
+    l["method"] = arg
+if cmd in ("on", "off", "method"):
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+print("spouštění sessions z boardu:", "ZAPNUTO" if l.get("enabled") else "vypnuto",
+      "| způsob:", {"app": "aplikace Claude (odkaz claude://)", "terminal": "okno Terminálu (claude CLI)"}[l.get("method", "app")])
+EOF
+        ;;
+      *) echo "použití: flow launch on|off|status|method app|terminal|log"; exit 2 ;;
+    esac ;;
+  approve)
+    case "${2:-status}" in
+      on|off|status|log)
+        if [ "$2" = "log" ]; then touch "$DIR/approve.log"; tail -n 20 "$DIR/approve.log"; exit 0; fi
+        "$PY" -I - "$DIR/config.json" "${2:-status}" <<'EOF'
+import json, os, sys
+p, cmd = sys.argv[1], sys.argv[2]
+try:
+    with open(p) as f:
+        d = json.load(f)
+except (OSError, ValueError):
+    d = {}
+a = d.setdefault("approve", {})
+if cmd in ("on", "off"):
+    a["enabled"] = cmd == "on"
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+print("schvalování AC z dashboardu (přechod do REFINED v Jiře):", "ZAPNUTO" if a.get("enabled", True) is not False else "vypnuto")
+EOF
+        ;;
+      *) echo "použití: flow approve on|off|status|log"; exit 2 ;;
+    esac ;;
+  workmode)
+    case "${2:-status}" in
+      on|off|status)
+        "$PY" -I - "$DIR/config.json" "${2:-status}" <<'EOF'
+import json, os, sys
+p, cmd = sys.argv[1], sys.argv[2]
+try:
+    with open(p) as f:
+        d = json.load(f)
+except (OSError, ValueError):
+    d = {}
+w = d.setdefault("workmode", {})
+if cmd in ("on", "off"):
+    w["enabled"] = cmd == "on"
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+print("zápis WorkMode / NextAction do Jiry:", "ZAPNUTO" if w.get("enabled") else "vypnuto", "(platí do 30 s, restart není potřeba)")
+EOF
+        ;;
+      plan)
+        curl -s "$URL/api/workmode" | "$PY" -I -c '
+import json, sys
+d = json.load(sys.stdin)
+print("stav:", d["status"])
+for r in d["plan"] or []:
+    print(" ", r.get("key"), "|", r.get("from"), "->", r.get("to"), "|", r.get("action") or "", "|", r.get("result"), r.get("why") or "")
+print("(nic se nezapsalo; plán se ukáže, až je rozhodnutí stabilní aspoň 60 s)")' ;;
+      log) touch "$DIR/workmode.log"; tail -n 20 "$DIR/workmode.log"; exit 0 ;;
+      *) echo "použití: flow workmode on|off|status|plan|log"; exit 2 ;;
+    esac ;;
+  help|-h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "neznámý příkaz: $1 (flow help)"; exit 2 ;;
+esac

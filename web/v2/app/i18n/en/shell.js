@@ -1,0 +1,16 @@
+export default {
+  "ant.ok": "OK", "ant.cancel": "Cancel", "ant.empty": "No data",
+  "lang.switch": "Language: English (click for Czech)",
+  "shell.expand": "Expand panel", "shell.collapse": "Collapse panel",
+  "shell.refresh": "Refresh", "shell.legend": "Legend", "shell.tips": "Tips",
+  "shell.select": "Select an item on the left. When something waits for you, the full ticket shows up here.",
+  "shell.server_down": "The server does not respond: {error}",
+  "shell.jira_off": "Jira: {reason} – items from tickets are not shown.",
+  "nav.inbox": "Inbox", "nav.sessions": "Sessions", "nav.board": "Board", "nav.cleanup": "Cleanup", "nav.ideas": "Ideas",
+  "nav.shortcut": "Shortcut: {k}",
+  "nav.cleanup.tip": "Clean up sessions in the Claude app",
+  "nav.ideas.tip": "Ideas set aside from old sessions",
+  "filter.title": "Filters (all tabs)", "filter.sprint": "sprint tickets", "filter.assignee": "Assignee", "filter.window": "Window",
+  "filter.all": "Everyone", "filter.me": "Mine", "filter.none": "Unassigned",
+  "filter.days": { one: "{n} day", other: "{n} days" },
+};

@@ -1,0 +1,85 @@
+# --- not published (requested) ---
+dev-notes/
+prototype/
+agf.pen
+output/
+
+# --- secrets: never commit (the app keeps them in ~/.flow, outside the repo) ---
+.env
+.env.*
+*.env
+jira.env
+secret
+secrets/
+page.token
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+id_ed25519*
+credentials*.json
+service-account*.json
+.npmrc
+.pypirc
+.netrc
+.flow/
+.mcp.json
+.claude/settings.local.json
+
+# --- runtime data of the dashboard (also kept in ~/.flow) ---
+events*.jsonl
+titles.json
+config.json
+launch.log
+approve.log
+dashboard.log
+refine/
+
+# --- JavaScript / Node ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+.parcel-cache/
+.cache/
+dist/
+build/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- demo recordings and temp files ---
+demo/out/
+demo/node_modules/
+*.pid
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# --- editors and OS ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
