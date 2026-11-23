@@ -73,7 +73,7 @@ Requirements: macOS or Linux, Python 3, Claude Code, a Jira Cloud account with a
 ln -s "$PWD/bin/flow" ~/.local/bin/flow
 
 # 2. Jira credentials (file mode 600)
-mkdir -p ~/.flow && printf 'JIRA_EMAIL=you@example.com\nJIRA_API_TOKEN=...\n' > ~/.flow/jira.env && chmod 600 ~/.flow/jira.env
+mkdir -p ~/.flow && printf 'JIRA_BASE_URL=https://your-site.atlassian.net\nJIRA_EMAIL=you@example.com\nJIRA_API_TOKEN=...\n' > ~/.flow/jira.env && chmod 600 ~/.flow/jira.env
 
 # 3. start and open the dashboard
 flow start && flow open        # http://127.0.0.1:8765/

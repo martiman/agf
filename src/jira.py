@@ -9,29 +9,38 @@ import urllib.request
 
 import msg as _m
 
-BASE = os.environ.get("JIRA_BASE_URL", "https://trafinoil.atlassian.net").rstrip("/")
 TTL_OK = 120
 TTL_FAIL = 30
 KEY_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 ENV_FILE = os.path.join(os.environ.get("FLOW_HOME") or os.path.expanduser("~/.flow"), "jira.env")
 
-_cache = {}
 
-
-def _creds():
-    email, token = os.environ.get("JIRA_EMAIL"), os.environ.get("JIRA_API_TOKEN")
-    if email and token:
-        return email, token
+def _env_file():
+    vals = {}
     try:
-        vals = {}
         with open(ENV_FILE) as f:
             for line in f:
                 if "=" in line and not line.lstrip().startswith("#"):
                     k, v = line.strip().split("=", 1)
                     vals[k.strip()] = v.strip().strip('"').strip("'")
-        return vals.get("JIRA_EMAIL"), vals.get("JIRA_API_TOKEN")
     except OSError:
+        pass
+    return vals
+
+
+BASE = (os.environ.get("JIRA_BASE_URL") or _env_file().get("JIRA_BASE_URL") or "").rstrip("/")
+
+_cache = {}
+
+
+def _creds():
+    if not BASE:
         return None, None
+    email, token = os.environ.get("JIRA_EMAIL"), os.environ.get("JIRA_API_TOKEN")
+    if email and token:
+        return email, token
+    vals = _env_file()
+    return vals.get("JIRA_EMAIL"), vals.get("JIRA_API_TOKEN")
 
 
 def _parent(p):
@@ -399,7 +408,7 @@ def _send(method, path, body=None):
     import base64
     email, token = _creds()
     if not (email and token):
-        raise RuntimeError("Jira není nastavená (JIRA_EMAIL / JIRA_API_TOKEN)")
+        raise RuntimeError("Jira není nastavená (JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN)")
     auth = base64.b64encode(f"{email}:{token}".encode()).decode()
     req = urllib.request.Request(
         f"{BASE}{path}", method=method, data=json.dumps(body).encode() if body is not None else None,
